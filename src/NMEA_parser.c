@@ -13,7 +13,8 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
-
+#include <ctype.h>
+#include <time.h>
 
 #define GPRMC_UTC_TIME   		1
 #define GPRMC_STATUS   			2
@@ -78,51 +79,66 @@ static GPRMC_type Gprmc;
 
 /*-------------------------------- Declarations -------------------------------------------*/
 bool IsDataValid(const uint8_t *input, const uint8_t size);
-void ParseGprmcData(const char * gprmcStr, const uint8_t sizeStr, GPRMC_type *gprmcOut);
-int16_t GprmcStartIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField);
-int16_t GprmcEndIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField);
-void GprmcParseData(GPRMC_type *inputGprmc);
-void GprmcGetTime(GPRMC_type *inputGprmc);
+void GprmcParseData(const char * gprmcStr, const uint8_t sizeStr, GPRMC_type *outGprmc);
+int16_t GprmcStartIndexOf(const char *inputData, uint16_t dataSize, uint8_t gprmcField);
+int16_t GprmcEndIndexOf(const char *inputData, uint16_t dataSize, uint8_t gprmcField);
+void GprmcGetDate(const char *rawGprmc, uint16_t rawSize, Date_type *inputUtc);
+
 /*----------------------------------- Main ------------------------------------------------*/
 int main(void) {
 
-	int16_t startIdx;
-	int16_t endIdx;
-	uint8_t idx;
-	uint8_t const data_field = GPRMC_CHECKSUM ;
-	ParseGprmcData(Nmea, strlen(Nmea), &Gprmc);
-	startIdx = GprmcStartIndexOf(Nmea, strlen(Nmea), data_field);
-	endIdx = GprmcEndIndexOf(Nmea, strlen(Nmea), data_field);
 
-	for (idx = startIdx; idx < endIdx; idx++) {
-		printf("%c", Nmea[idx]);
-	}
-
-	GprmcParseData
-
+	GprmcParseData(Nmea, strlen(Nmea), &Gprmc);
+	printf("Time: %02d:%02d:%02d", Gprmc.utcDate.hours, Gprmc.utcDate.minutes, Gprmc.utcDate.seconds);
+	printf("\nDone!");
 	return EXIT_SUCCESS;
 }
 
 /*-----------------------------------------------------------------------------------------*/
-void GprmcParseData(char *rawGprmc, GPRMC_type *outGprmc) {
 
-	if ((NULL != rawGprmc) && (NULL != outGprmc)) {
-		GprmcGetTime(outGprmc->utcDate);
+void GprmcParseData(const char * gprmcStr, const uint8_t sizeStr, GPRMC_type *outGprmc) {
+
+	int8_t validData = false;
+	const char * gprmcPattern = "$GPRMC";
+
+	validData = (int8_t)IsDataValid((uint8_t *)gprmcStr, sizeStr);
+
+	if (true == validData) {
+		//check if GPRMC was added
+		validData = strncmp(gprmcPattern, gprmcStr, strlen(gprmcPattern));
+		if (0 == validData) {
+			/* get date */
+			GprmcGetDate(gprmcStr, sizeStr,&outGprmc->utcDate);
+		}
 	}
-
-
 }
 
-void GprmcGetTime(char *rawGprmc, uint16_t rawSize, Date_type *inputUtc) {
-	char data[10];
 
-	if (NULL != inputUtc) {
+void GprmcGetDate(const char *rawGprmc, uint16_t rawSize, Date_type *inputUtc) {
+	char data[10] = {0xFF};
+	uint32_t time;
+	uint16_t startIdx = 0;
+	uint16_t endIdx = 0;
+	uint16_t sliceSize;
 
-		GprmcGetTime(inputGprmc);
+	if ((NULL != inputUtc) && (NULL != rawGprmc)) {
+		/* get time */
+		startIdx = GprmcStartIndexOf(rawGprmc, rawSize, GPRMC_UTC_TIME);
+		endIdx = GprmcEndIndexOf(rawGprmc, rawSize, GPRMC_UTC_TIME);
+		sliceSize = endIdx - startIdx;
+
+		memcpy(data, &rawGprmc[startIdx], sliceSize);
+
+		if (isdigit(data[0])) {
+			time = atoi(data);
+			inputUtc->hours = ((data[0] - '0') * 10) | (data[1] - '0');
+			inputUtc->minutes = ((data[2] - '0') * 10) | (data[3] - '0');
+			inputUtc->seconds = ((data[4] - '0') * 10) | (data[5] - '0');
+		}
 	}
 }
 
-int16_t GprmcStartIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField) {
+int16_t GprmcStartIndexOf(const char *inputData, uint16_t dataSize, uint8_t gprmcField) {
 
 	int16_t indexOf = -1;
 	uint8_t counter = 0;
@@ -143,7 +159,7 @@ int16_t GprmcStartIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField
 	return indexOf;
 }
 
-int16_t GprmcEndIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField) {
+int16_t GprmcEndIndexOf(const char *inputData, uint16_t dataSize, uint8_t gprmcField) {
 
 	int16_t indexOf = -1;
 	uint8_t counter = 0;
@@ -163,23 +179,6 @@ int16_t GprmcEndIndexOf(char *inputData, uint16_t dataSize, uint8_t gprmcField) 
 	}
 
 	return indexOf;
-}
-
-void ParseGprmcData(const char * gprmcStr, const uint8_t sizeStr, GPRMC_type *gprmcOut) {
-
-	int8_t validData = false;
-	const char * gprmcPattern = "$GPRMC";
-
-	validData = (int8_t)IsDataValid((uint8_t *)gprmcStr, sizeStr);
-
-	if (true == validData) {
-		//check if GPRMC was added
-		validData = strncmp(gprmcPattern, gprmcStr, strlen(gprmcPattern));
-		if (0 == validData) {
-			//		gprmcOut
-
-		}
-	}
 }
 
 bool IsDataValid(const uint8_t *input, const uint8_t size) {
